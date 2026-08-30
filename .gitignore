@@ -1,0 +1,9 @@
+# 빌드 산출물
+bin/
+obj/
+
+# 개인 데이터 - 지원 이력과 날짜별 리포트는 커밋하지 않는다
+dailyreport/
+
+# publish 산출물
+app/
