@@ -7,3 +7,6 @@ dailyreport/
 
 # publish 산출물
 app/
+
+# SMTP 비밀번호 등 비밀 값
+secrets/

@@ -7,6 +7,8 @@
 jobcrawler/
 ├── config.json              설정 (직무코드, 키워드 필터, 포트, 실행 시각)
 ├── app/                     dotnet publish 산출물 (스케줄러가 실행하는 exe)
+├── secrets/
+│   └── smtp-password.txt    SMTP 비밀번호 (직접 만든다. 저장소에 올라가지 않음)
 ├── dailyreport/
 │   ├── 2026-08-30.html      날짜별 리포트
 │   ├── oldjoblist.json      이미 지원한 공고 - 다음 리포트에서 제외됨
@@ -30,6 +32,7 @@ dotnet build
 | `serve` | 리포트 열람 서버를 띄운다. 체크박스가 `oldjoblist.json` 에 기록되려면 이게 떠 있어야 한다 |
 | `run` | `crawl` 후 `serve` 하고 브라우저를 연다 |
 | `list` | 지원한 공고 목록을 콘솔에 출력한다 |
+| `test-email` | 크롤링 없이 메일 설정이 맞는지 시험 발송해 본다 |
 | `install-schedule` | 매일 정해진 시각에 `crawl` 이 돌도록 작업 스케줄러에 등록한다 |
 | `uninstall-schedule` | 위 작업을 해제한다 |
 | `schedule-status` | 등록된 작업 상태를 본다 |
@@ -50,6 +53,64 @@ HTML 파일을 파일 탐색기에서 직접(`file://`) 열어도 목록은 그�
 브라우저는 파일을 쓸 수 없으므로 체크 결과가 바로 반영되지 않는다.
 이때는 브라우저에 임시 보관해 두었다가 나중에 `serve` 가 떠 있는 상태에서
 `http://localhost:8777/` 로 같은 리포트를 열면 밀린 기록이 자동으로 반영된다.
+
+## 리포트 메일로 받기
+
+`crawl` 이 리포트를 만들 때마다 `config.json` 의 `Email.To` 로 메일을 보낸다.
+메일에는 공고 목록이 본문으로 들어가고, 리포트 HTML 파일이 첨부된다.
+메일 클라이언트는 스크립트를 걷어내므로 **메일 안에서는 체크박스가 동작하지 않는다.**
+체크는 `serve` 를 띄우고 `http://localhost:8777/` 에서 한다.
+
+### 1. 네이버 메일에서 SMTP 켜기
+
+네이버 메일 > 환경설정 > POP3/IMAP 설정 > **IMAP/SMTP 사용**을 '사용함' 으로 바꾼다.
+켜지 않으면 로그인 단계에서 실패한다.
+
+### 2. 비밀번호 넣기
+
+비밀번호는 `config.json` 에 넣지 않는다. 이 파일은 저장소에 올라간다.
+아래 둘 중 하나를 쓴다. 스케줄러로 돌릴 거라면 파일 쪽이 확실하다.
+
+**파일로 두기** (`secrets/` 는 `.gitignore` 에 들어 있다)
+
+```bash
+mkdir -p secrets
+```
+
+만든 뒤 `secrets/smtp-password.txt` 에 비밀번호 한 줄만 저장한다.
+
+**환경변수로 두기** (설정 후 새 터미널을 열어야 적용된다)
+
+```bash
+setx JOBCRAWLER_SMTP_PASSWORD "여기에-비밀번호"
+```
+
+### 3. 확인
+
+```bash
+dotnet run --project src/JobCrawler -- test-email
+```
+
+`you@example.com` 으로 확인용 메일 한 통이 간다.
+
+### 메일 설정 항목
+
+| 항목 | 설명 |
+|---|---|
+| `Email.Enabled` | `false` 로 두면 메일을 보내지 않는다 |
+| `Email.To` | 받는 주소 |
+| `Email.From` | 보내는 주소. 보통 SMTP 계정 자신의 주소여야 한다 |
+| `Email.SmtpHost` / `SmtpPort` | 네이버는 `smtp.naver.com` / `587` |
+| `Email.UseStartTls` | `true` 면 587 STARTTLS, `false` 면 465 SSL |
+| `Email.UserName` | SMTP 로그인 아이디. 네이버는 주소의 `@` 앞부분 |
+| `Email.PasswordEnvVar` | 비밀번호를 담은 환경변수 이름 |
+| `Email.PasswordFile` | 환경변수가 없을 때 읽을 파일 경로 |
+| `Email.AttachReport` | 리포트 HTML 파일을 첨부할지 여부 |
+
+지메일로 보내려면 `SmtpHost` 를 `smtp.gmail.com`, `UserName` 을 전체 메일 주소로 두고,
+계정 비밀번호 대신 **앱 비밀번호**를 발급받아 쓴다.
+
+메일 발송이 실패해도 리포트 파일은 그대로 남는다.
 
 ## 매일 자동 실행
 

@@ -3,6 +3,7 @@ using System.Text;
 using JobCrawler;
 using JobCrawler.Crawling;
 using JobCrawler.Hosting;
+using JobCrawler.Mailing;
 using JobCrawler.Models;
 using JobCrawler.Reporting;
 using JobCrawler.Scheduling;
@@ -30,6 +31,7 @@ try
         "serve" => await ServeAsync(),
         "run" => await CrawlAsync() == 0 ? await ServeAsync(openBrowser: true) : 1,
         "list" => ListApplied(),
+        "test-email" => await TestEmailAsync(),
         "install-schedule" => WindowsSchedule.Install(SchedulableExecutable(root), root, ParseTime()),
         "uninstall-schedule" => WindowsSchedule.Uninstall(),
         "schedule-status" => WindowsSchedule.Status(),
@@ -79,7 +81,61 @@ async Task<int> CrawlAsync()
 
     Console.WriteLine($"이미 지원한 공고 {excluded}건 제외 → 리포트 {visible.Count}건");
     Console.WriteLine($"리포트 생성: {path}");
+
+    if (config.Email.Enabled)
+        await SendReportMailAsync(today, visible, matched.Count, excluded, path);
+
+    // 메일 실패로 리포트 생성까지 실패로 취급하지는 않는다.
     return 0;
+}
+
+async Task SendReportMailAsync(
+    DateOnly date, List<JobPosting> jobs, int totalCrawled, int excluded, string reportPath)
+{
+    var newCount = jobs.Count(j => j.FirstSeen == date);
+
+    await ReportMailer.SendAsync(
+        config.Email,
+        root,
+        EmailReportBuilder.Subject(date, jobs.Count, newCount),
+        EmailReportBuilder.BuildHtml(date, jobs, totalCrawled, excluded, config.ServerPort),
+        reportPath,
+        cts.Token);
+}
+
+/// <summary>크롤링 없이 메일 설정만 확인한다.</summary>
+async Task<int> TestEmailAsync()
+{
+    if (!config.Email.Enabled)
+        Console.WriteLine("참고: config.json 의 Email.Enabled 가 false 입니다. 시험 발송은 그대로 진행합니다.");
+
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var sample = new List<JobPosting>
+    {
+        new()
+        {
+            Id = "0",
+            Title = "메일 설정 확인용 예시 공고",
+            Company = "JobCrawler",
+            Url = $"http://localhost:{config.ServerPort}/",
+            Duty = "서버",
+            Career = "경력무관",
+            Location = "서울 > 강남구",
+            Deadline = "채용시",
+            FirstSeen = today,
+        },
+    };
+
+    var ok = await ReportMailer.SendAsync(
+        config.Email,
+        root,
+        $"[게임잡] 메일 설정 확인 ({today:yyyy-MM-dd})",
+        EmailReportBuilder.BuildHtml(today, sample, 1, 0, config.ServerPort),
+        attachmentPath: null,
+        cts.Token);
+
+    if (ok) Console.WriteLine($"{config.Email.To} 의 받은편지함을 확인하세요.");
+    return ok ? 0 : 1;
 }
 
 async Task<int> ServeAsync(bool openBrowser = false)
@@ -226,12 +282,13 @@ static int Help()
           serve               리포트 열람 서버를 띄운다. 체크박스를 켜면 oldjoblist.json 에 기록된다.
           run                 crawl 후 serve 하고 브라우저를 연다.
           list                oldjoblist.json 에 등재된 지원 공고를 출력한다.
+          test-email          크롤링 없이 메일 설정이 맞는지 시험 발송해 본다.
 
           install-schedule    매일 정해진 시각(config.json 의 ScheduleTime)에 crawl 을 돌리도록 등록한다.
           uninstall-schedule  위 작업을 해제한다.
           schedule-status     등록된 작업 상태를 본다.
 
-        설정 파일: config.json  (직무코드, 키워드 필터, 포트, 실행 시각)
+        설정 파일: config.json  (직무코드, 키워드 필터, 포트, 실행 시각, 메일)
         상태 파일: dailyreport/oldjoblist.json  (지원한 공고 - 다음 리포트에서 제외됨)
                    dailyreport/seenjobs.json    (최초 발견일 - NEW 배지 판정용)
         """);

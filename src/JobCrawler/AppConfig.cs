@@ -35,6 +35,9 @@ public sealed class AppConfig
     /// <summary>자동 실행 시각(install-schedule 이 등록하는 시각). HH:mm</summary>
     public string ScheduleTime { get; set; } = "20:00";
 
+    /// <summary>리포트를 만든 뒤 메일로 보내는 설정.</summary>
+    public EmailSettings Email { get; set; } = new();
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
