@@ -27,6 +27,17 @@ public static class ReportMailer
             Console.Error.WriteLine("메일을 보내지 못했습니다. 다음 설정이 비어 있습니다:");
             foreach (var problem in problems)
                 Console.Error.WriteLine($"  - {problem}");
+
+            if (password is null && !string.IsNullOrWhiteSpace(settings.PasswordFile))
+            {
+                var expected = Path.IsPathRooted(settings.PasswordFile)
+                    ? settings.PasswordFile
+                    : Path.Combine(root, settings.PasswordFile);
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"비밀번호 파일을 여기에 두면 됩니다: {expected}");
+                Console.Error.WriteLine("파일에는 비밀번호 한 줄만 넣으세요.");
+            }
+
             Console.Error.WriteLine("자세한 설정 방법은 README.md 의 '리포트 메일로 받기' 를 보세요.");
             return false;
         }
@@ -50,6 +61,11 @@ public static class ReportMailer
             var security = settings.UseStartTls
                 ? SecureSocketOptions.StartTls
                 : SecureSocketOptions.SslOnConnect;
+
+            // 실패했을 때 어디가 틀렸는지 바로 보이도록 접속 조건을 찍는다.
+            Console.WriteLine(
+                $"메일 발송 시도: {settings.SmtpHost}:{settings.SmtpPort} " +
+                $"({(settings.UseStartTls ? "STARTTLS" : "SSL")}), 계정 {settings.UserName} → {settings.To}");
 
             await client.ConnectAsync(settings.SmtpHost, settings.SmtpPort, security, ct);
             await client.AuthenticateAsync(settings.UserName, password, ct);
