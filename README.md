@@ -30,6 +30,9 @@ dotnet build
 |---|---|
 | `crawl` | 게임잡을 긁어 `dailyreport/yyyy-MM-dd.html` 을 만든다. 스케줄러가 매일 실행하는 명령 |
 | `serve` | 리포트 열람 서버를 띄운다. 체크박스가 `oldjoblist.json` 에 기록되려면 이게 떠 있어야 한다 |
+| `install-service` | 위 서버를 Windows 서비스로 등록한다 (관리자 권한 필요) |
+| `uninstall-service` | 서비스를 해제한다 (관리자 권한 필요) |
+| `service-status` | 서비스 상태를 본다 |
 | `run` | `crawl` 후 `serve` 하고 브라우저를 연다 |
 | `list` | 지원한 공고 목록을 콘솔에 출력한다 |
 | `test-email` | 크롤링 없이 메일 설정이 맞는지 시험 발송해 본다 |
@@ -39,20 +42,52 @@ dotnet build
 
 ## 쓰는 방법
 
-리포트를 볼 때는 **`serve` 를 띄우고 `http://localhost:8777/` 로 연다.**
-
-```bash
-dotnet run --project src/JobCrawler -- serve
-```
-
-`http://localhost:8777/` 은 가장 최근 리포트로 넘겨준다.
+`http://localhost:8777/` 을 열면 가장 최근 리포트가 나온다.
 공고 왼쪽 체크박스를 켜면 곧바로 `dailyreport/oldjoblist.json` 에 기록되고,
 다음 `crawl` 부터 그 공고는 리포트에 나오지 않는다. 체크를 풀면 기록에서 다시 빠진다.
 
-HTML 파일을 파일 탐색기에서 직접(`file://`) 열어도 목록은 그대로 보이지만,
-브라우저는 파일을 쓸 수 없으므로 체크 결과가 바로 반영되지 않는다.
-이때는 브라우저에 임시 보관해 두었다가 나중에 `serve` 가 떠 있는 상태에서
-`http://localhost:8777/` 로 같은 리포트를 열면 밀린 기록이 자동으로 반영된다.
+체크가 저장되려면 리포트 서버가 떠 있어야 한다.
+**아래 서비스 등록을 한 번 해 두면 부팅할 때부터 항상 떠 있으므로 신경 쓸 일이 없다.**
+임시로 띄우려면 `serve` 를 직접 실행해도 된다.
+
+메일에 첨부된 HTML 을 파일 탐색기에서 직접(`file://`) 열어도 서버만 떠 있으면 체크가 그대로 저장된다.
+서버가 꺼져 있으면 브라우저에 임시 보관해 두었다가, 서버가 켜진 뒤 같은 리포트를 다시 열 때 자동으로 반영된다.
+
+## 리포트 서버를 Windows 서비스로 등록
+
+서비스로 두면 로그인하지 않아도 부팅 직후부터 서버가 뜨고, 죽어도 스스로 되살아난다.
+**서비스 등록은 관리자 권한이 필요하다.**
+
+먼저 실행 파일을 만든다.
+
+```bash
+dotnet publish src/JobCrawler -c Release -o app
+```
+
+그 다음 **관리자 권한 명령 프롬프트**에서 (시작 메뉴 > 명령 프롬프트 > 오른쪽 클릭 > 관리자 권한으로 실행):
+
+```bash
+cd /d D:\projects\jobcrawler\app && JobCrawler.exe install-service
+```
+
+등록되는 내용은 이렇다.
+
+- 서비스 이름 `JobCrawlerReportServer`, 시작 유형 자동
+- 죽으면 5초 뒤 재시작, 두 번째까지 실패하면 1분 간격으로 재시도
+- `LocalSystem` 계정으로 돌며 `http://localhost:8777/` 만 연다
+
+상태 확인과 해제:
+
+```bash
+JobCrawler.exe service-status
+```
+
+```bash
+JobCrawler.exe uninstall-service
+```
+
+`uninstall-service` 도 관리자 권한이 필요하다.
+`config.json` 의 `ServerPort` 를 바꿨다면 서비스를 지웠다가 다시 등록해야 한다.
 
 ## 리포트 메일로 받기
 

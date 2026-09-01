@@ -8,8 +8,11 @@ using JobCrawler.Models;
 using JobCrawler.Reporting;
 using JobCrawler.Scheduling;
 using JobCrawler.Storage;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-Console.OutputEncoding = Encoding.UTF8;
+// 서비스로 실행되면 콘솔이 없어 인코딩 지정이 실패한다. 실패해도 그냥 진행한다.
+try { Console.OutputEncoding = Encoding.UTF8; } catch (IOException) { }
 
 var command = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
 
@@ -32,7 +35,10 @@ try
         "run" => await CrawlAsync() == 0 ? await ServeAsync(openBrowser: true) : 1,
         "list" => ListApplied(),
         "test-email" => await TestEmailAsync(),
-        "install-schedule" => WindowsSchedule.Install(SchedulableExecutable(root), root, ParseTime()),
+        "install-schedule" => WindowsSchedule.InstallDaily(SchedulableExecutable(root), root, ParseTime()),
+        "install-service" => WindowsServiceInstaller.Install(SchedulableExecutable(root), config.ServerPort),
+        "uninstall-service" => WindowsServiceInstaller.Uninstall(),
+        "service-status" => WindowsServiceInstaller.Status(),
         "uninstall-schedule" => WindowsSchedule.Uninstall(),
         "schedule-status" => WindowsSchedule.Status(),
         "help" or "-h" or "--help" => Help(),
@@ -138,6 +144,10 @@ async Task<int> TestEmailAsync()
     return ok ? 0 : 1;
 }
 
+/// <summary>
+/// 리포트 서버를 띄운다.
+/// 콘솔에서 실행하면 콘솔 앱으로, 서비스 제어 관리자가 실행하면 서비스로 돈다.
+/// </summary>
 async Task<int> ServeAsync(bool openBrowser = false)
 {
     var server = new ReportServer(reportDir, store, config.ServerPort);
@@ -151,12 +161,13 @@ async Task<int> ServeAsync(bool openBrowser = false)
             OpenBrowser(server.RootUrl);
         }, cts.Token);
     }
-    else
-    {
-        Console.WriteLine($"브라우저에서 {server.RootUrl} 을 여세요.");
-    }
 
-    await server.RunAsync(cts.Token);
+    var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddSingleton(server);
+    builder.Services.AddHostedService<ReportBackgroundService>();
+    builder.Services.AddWindowsService(options => options.ServiceName = WindowsServiceInstaller.ServiceName);
+
+    await builder.Build().RunAsync(cts.Token);
     return 0;
 }
 
@@ -287,6 +298,11 @@ static int Help()
           install-schedule    매일 정해진 시각(config.json 의 ScheduleTime)에 crawl 을 돌리도록 등록한다.
           uninstall-schedule  위 작업을 해제한다.
           schedule-status     등록된 작업 상태를 본다.
+
+          install-service     리포트 서버를 Windows 서비스로 등록한다. (관리자 권한 필요)
+                              부팅 직후부터 떠 있어 체크가 항상 즉시 저장된다.
+          uninstall-service   서비스를 해제한다. (관리자 권한 필요)
+          service-status      서비스 상태를 본다.
 
         설정 파일: config.json  (직무코드, 키워드 필터, 포트, 실행 시각, 메일)
         상태 파일: dailyreport/oldjoblist.json  (지원한 공고 - 다음 리포트에서 제외됨)

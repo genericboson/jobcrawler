@@ -44,9 +44,9 @@ public static class EmailReportBuilder
               </div>
 
               <div style="margin:0 0 18px;padding:12px 14px;background:#e8f0fe;border-radius:8px;font-size:13px;color:#1f3f7a;">
-                지원한 공고를 체크하려면 PC 에서 <code>JobCrawler serve</code> 를 실행한 뒤
-                <a href="{reportUrl}" style="color:#2f6fed;">{reportUrl}</a> 을 여세요.
                 메일 안에서는 체크박스가 동작하지 않습니다.
+                PC 에서 <a href="{reportUrl}" style="color:#2f6fed;">{reportUrl}</a> 을 열어 체크하세요.
+                첨부한 HTML 을 직접 열어도, 리포트 서버가 떠 있으면 체크가 그대로 저장됩니다.
               </div>
 
             """);

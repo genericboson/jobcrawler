@@ -155,8 +155,9 @@ public static class ReportGenerator
 <div class="notice" id="offlineNotice">
   체크 결과를 <b>oldjoblist.json 에 저장할 수 없는 상태</b>입니다.
   브라우저에 임시 보관해 두었다가 서버가 켜지면 자동으로 반영합니다.
-  바로 반영하려면 <code>JobCrawler serve</code> 를 실행한 뒤 이 페이지를
-  <code>http://localhost:{{serverPort}}/</code> 로 여세요.
+  리포트 서버가 꺼져 있는 것 같습니다. <code>JobCrawler install-schedule</code> 을 한 번 실행해 두면
+  로그인할 때마다 서버가 자동으로 떠서 체크가 항상 즉시 저장됩니다.
+  지금 바로 켜려면 <code>JobCrawler serve</code> 를 실행하세요.
 </div>
 
 <div class="bar">

@@ -34,7 +34,19 @@ public sealed class JobStore
         // 경로마다 고유한 뮤텍스 이름. 백슬래시는 뮤텍스 이름에 쓸 수 없어 치환한다.
         var key = Path.GetFullPath(reportDirectory).ToLowerInvariant()
             .Replace('\\', '_').Replace('/', '_').Replace(':', '_');
-        _lock = new Mutex(false, $"Local\\JobCrawler_{key}");
+
+        // 서버가 Windows 서비스로 돌면 세션 0, 사용자가 돌리는 crawl 은 세션 1 에 있다.
+        // Local\ 뮤텍스는 세션을 넘지 못하므로 Global\ 을 먼저 시도한다.
+        // Global\ 생성 권한이 없는 계정도 있으므로 실패하면 Local\ 로 물러난다.
+        // (파일 쓰기 자체가 임시 파일 교체 방식이라 잠금이 없어도 깨지지는 않는다.)
+        try
+        {
+            _lock = new Mutex(false, $"Global\\JobCrawler_{key}");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            _lock = new Mutex(false, $"Local\\JobCrawler_{key}");
+        }
     }
 
     public string OldJobListPath => _oldJobListPath;

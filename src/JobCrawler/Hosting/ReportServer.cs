@@ -35,7 +35,8 @@ public sealed class ReportServer
 
     public string RootUrl => $"http://localhost:{_port}/";
 
-    public async Task RunAsync(CancellationToken ct)
+    /// <summary>서버를 띄운다. 이미 떠 있으면 false, 정상 종료했으면 true.</summary>
+    public async Task<bool> RunAsync(CancellationToken ct)
     {
         using var listener = new HttpListener();
         listener.Prefixes.Add(RootUrl);
@@ -46,11 +47,19 @@ public sealed class ReportServer
         }
         catch (HttpListenerException ex)
         {
+            // 로그인 작업으로 이미 서버가 떠 있는 상태에서 또 실행하는 경우가 흔하다.
+            // 이건 오류가 아니라 "할 일이 없음" 이므로 조용히 물러난다.
+            if (await IsOwnServerRunningAsync())
+            {
+                Console.WriteLine($"리포트 서버가 이미 {RootUrl} 에서 돌고 있습니다.");
+                return false;
+            }
+
             Console.Error.WriteLine($"포트 {_port} 를 열지 못했습니다: {ex.Message}");
             Console.Error.WriteLine("다른 프로그램이 포트를 쓰고 있다면 config.json 의 ServerPort 를 바꾸세요.");
             Console.Error.WriteLine($"권한 문제라면 관리자 명령 프롬프트에서 다음을 한 번 실행하세요:");
             Console.Error.WriteLine($"  netsh http add urlacl url=http://localhost:{_port}/ user=%USERNAME%");
-            throw;
+            return false;
         }
 
         Console.WriteLine($"리포트 서버 실행 중: {RootUrl}");
@@ -83,6 +92,22 @@ public sealed class ReportServer
         }
 
         Console.WriteLine("리포트 서버를 종료했습니다.");
+        return true;
+    }
+
+    /// <summary>포트를 잡고 있는 것이 이 프로그램의 리포트 서버인지 확인한다.</summary>
+    private async Task<bool> IsOwnServerRunningAsync()
+    {
+        try
+        {
+            using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var response = await probe.GetAsync($"{RootUrl}api/applied");
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private async Task HandleAsync(HttpListenerContext context)
