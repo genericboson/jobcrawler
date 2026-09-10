@@ -1,11 +1,11 @@
-# 게임잡 서버 프로그래머 공고 크롤러
+# 서버 프로그래머 공고 크롤러
 
-게임잡(gamejob.co.kr)에서 서버 직무 채용공고를 모아 날짜별 HTML 리포트를 만든다.
+게임잡·사람인·잡코리아에서 서버 직무 채용공고를 모아 날짜별 HTML 리포트를 만든다.
 리포트의 체크박스를 켜면 그 공고가 "이미 지원한 공고"로 기록되어 다음 리포트부터 빠진다.
 
 ```
 jobcrawler/
-├── config.json              설정 (직무코드, 키워드 필터, 포트, 실행 시각)
+├── config.json              설정 (사이트별 검색 조건, 포트, 실행 시각, 메일)
 ├── app/                     dotnet publish 산출물 (스케줄러가 실행하는 exe)
 ├── secrets/
 │   └── smtp-password.txt    SMTP 비밀번호 (직접 만든다. 저장소에 올라가지 않음)
@@ -28,7 +28,7 @@ dotnet build
 
 | 명령 | 하는 일 |
 |---|---|
-| `crawl` | 게임잡을 긁어 `dailyreport/yyyy-MM-dd.html` 을 만든다. 스케줄러가 매일 실행하는 명령 |
+| `crawl` | 켜 둔 사이트를 모두 긁어 `dailyreport/yyyy-MM-dd.html` 을 만든다. 스케줄러가 매일 실행하는 명령 |
 | `serve` | 리포트 열람 서버를 띄운다. 체크박스가 `oldjoblist.json` 에 기록되려면 이게 떠 있어야 한다 |
 | `install-service` | 위 서버를 Windows 서비스로 등록한다 (관리자 권한 필요) |
 | `uninstall-service` | 서비스를 해제한다 (관리자 권한 필요) |
@@ -187,18 +187,61 @@ dotnet run --project src/JobCrawler -- uninstall-schedule
 
 ## 설정 (`config.json`)
 
+### 사이트별 설정 (`Sources`)
+
+사이트마다 따로 켜고 끄고, 검색 조건도 따로 준다.
+
+```json
+{
+  "Sources": {
+    "GameJob":  { "Enabled": true, "DutyCodes": [16, 17, 19, 21], "PageSize": 100 },
+    "Saramin":  { "Enabled": true, "Keywords": ["서버 프로그래머"] },
+    "JobKorea": { "Enabled": true, "Keywords": ["서버 프로그래머"] }
+  }
+}
+```
+
+세 사이트가 공통으로 갖는 항목이다.
+
 | 항목 | 설명 |
 |---|---|
-| `DutyCodes` | 크롤링할 게임잡 직무 코드. 기본 `[16]` = 기술지원 > 서버 |
-| `IncludeKeywords` | 제목·직무에 이 중 하나라도 있어야 리포트에 넣는다. 비우면 직무 코드 결과를 전부 넣는다 |
+| `Enabled` | `false` 면 그 사이트는 건너뛴다 |
+| `IncludeKeywords` | 제목·직무에 이 중 하나라도 있어야 리포트에 넣는다. 비우면 전부 넣는다 |
 | `ExcludeKeywords` | 제목·직무에 이 단어가 있으면 뺀다 |
 | `MaxPages` | 읽어올 최대 페이지 수 (안전장치) |
-| `PageSize` | 한 요청에 받아올 공고 수 (20~100) |
+
+사이트마다 다른 항목은 이렇다.
+
+| 사이트 | 고유 항목 | 검색 방식 |
+|---|---|---|
+| `GameJob` | `DutyCodes`, `PageSize` | 직무 코드로 목록을 받는다 (아래 표) |
+| `Saramin` | `Keywords` | 키워드 검색. 한 페이지 40건 |
+| `JobKorea` | `Keywords` | 키워드 검색. 한 페이지 20건 |
+
+`Keywords` 에 여러 개를 넣으면 각각 검색해 합친 뒤 중복을 없앤다.
+
+```json
+{ "Keywords": ["서버 프로그래머", "게임 서버 개발", "백엔드 개발자"] }
+```
+
+사람인·잡코리아는 게임 업계만 걸러주지 않으므로, 게임 쪽만 보고 싶다면
+`IncludeKeywords` 로 좁히는 편이 낫다.
+
+```json
+{ "Keywords": ["서버 프로그래머"], "IncludeKeywords": ["게임"] }
+```
+
+### 그 밖의 설정
+
+| 항목 | 설명 |
+|---|---|
 | `RequestDelayMs` | 페이지 요청 사이 대기 시간 |
-| `ServerPort` | `serve` 가 쓰는 로컬 포트. 바꾸면 리포트를 다시 만들어야 한다 |
+| `ServerPort` | `serve` 가 쓰는 로컬 포트. 바꾸면 리포트를 다시 만들고 서비스도 다시 등록해야 한다 |
 | `ScheduleTime` | `install-schedule` 이 등록할 시각 (`HH:mm`) |
 
-### 직무 코드
+### 게임잡 직무 코드
+
+게임잡 자체 내부 코드다. 표준 직업분류와는 관계가 없고 다른 사이트에는 쓸 수 없다.
 
 | 코드 | 직무 | 코드 | 직무 |
 |---|---|---|---|
@@ -208,19 +251,22 @@ dotnet run --project src/JobCrawler -- uninstall-schedule
 | 12 | 플랫폼 개발 | 20 | 보안 |
 | 16 | **서버** | 21 | 클라우드 |
 
-범위를 넓히되 서버 쪽만 남기고 싶다면 이런 식으로 조합한다.
-
-```json
-{
-  "DutyCodes": [16, 17, 19, 21],
-  "IncludeKeywords": ["서버", "server", "백엔드", "backend"]
-}
-```
+전체 목록은 게임잡 목록 페이지 HTML 의 `data-value-json` 속성에 들어 있다.
 
 ## 동작 메모
 
-게임잡 목록은 `/Recruit/_GI_Job_List/` 로 보내는 POST 로 페이지를 넘긴다.
+공고 식별자는 `사이트:공고번호` 다 (`gamejob:283673`, `jobkorea:49637726`).
+사이트가 다르면 공고 번호가 겹치므로 접두사 없이는 서로 다른 공고를 같은 것으로 오해한다.
+접두사 없이 저장된 옛 기록은 게임잡 것으로 보고 읽어 준다.
+
+**게임잡** — 목록은 `/Recruit/_GI_Job_List/` 로 보내는 POST 로 페이지를 넘긴다.
 검색 조건을 매 요청 본문(`condition[duty][]`)에 실어 보내는 방식이라 크롤러도 같은 요청을 쓴다.
 같은 경로에 GET 으로 `Page=N` 만 붙이면 직무 필터가 풀린 전체 목록이 돌아오므로 쓰면 안 된다.
 
-공고 식별자는 게임잡의 공고 번호(`GI_No`)다. 제목이 바뀌어도 같은 공고로 인식한다.
+**사람인** — 평범한 서버 렌더링 HTML 이라 `div.item_recruit` 를 그대로 읽는다.
+페이지는 `recruitPage` 파라미터로 넘긴다.
+
+**잡코리아** — Next.js 라 눈에 보이는 마크업은 유틸리티 클래스뿐이라 긁어내기 나쁘다.
+대신 서버가 렌더링하면서 react-query 상태를 JSON 으로 심어 두는데 거기에 공고 목록이
+필드 이름까지 갖춰 들어 있어 그 JSON 을 읽는다. 페이지는 `Page_No` 파라미터로 넘긴다.
+마감일이 `2070-01-01` 로 오면 상시채용이라는 뜻이라 '채용시' 로 바꿔 보여준다.

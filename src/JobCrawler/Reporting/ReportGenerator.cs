@@ -36,6 +36,7 @@ public static class ReportGenerator
         int serverPort)
     {
         var newCount = jobs.Count(j => j.FirstSeen == date);
+        var sourceSummary = Html(EmailReportBuilder.SourceSummary(jobs));
         var sb = new StringBuilder();
 
         sb.Append($$"""
@@ -44,7 +45,7 @@ public static class ReportGenerator
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>게임잡 서버 프로그래머 공고 {{date:yyyy-MM-dd}}</title>
+<title>서버 프로그래머 공고 {{date:yyyy-MM-dd}}</title>
 <style>
   :root {
     --bg: #f6f7f9;      --card: #ffffff;   --text: #16181d;   --muted: #6b7280;
@@ -52,6 +53,7 @@ public static class ReportGenerator
     --new: #0f9960;     --new-soft: #e3f5ec;
     --warn: #b45309;    --warn-soft: #fef3c7;
     --done: #9aa1ab;
+    --src: #7c3aed;     --src-soft: #f0e9fe;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -60,6 +62,7 @@ public static class ReportGenerator
       --new: #4ade80;   --new-soft: #16301f;
       --warn: #fbbf24;  --warn-soft: #3a2e10;
       --done: #6b7280;
+      --src: #c4b5fd;   --src-soft: #2a2140;
     }
   }
   * { box-sizing: border-box; }
@@ -131,6 +134,7 @@ public static class ReportGenerator
     border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
   }
   .tag.duty { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .tag.src { background: var(--src-soft); color: var(--src); border-color: transparent; font-weight: 600; }
   .tag.deadline { background: var(--bg); }
   .empty {
     text-align: center; padding: 60px 20px; color: var(--muted);
@@ -142,8 +146,8 @@ public static class ReportGenerator
 <body>
 <div class="wrap">
 <header>
-  <h1>게임잡 · 서버 프로그래머 공고</h1>
-  <div class="sub">{{date:yyyy년 M월 d일 (ddd)}} 리포트</div>
+  <h1>서버 프로그래머 공고</h1>
+  <div class="sub">{{date:yyyy년 M월 d일 (ddd)}} 리포트 · {{sourceSummary}}</div>
   <div class="stats">
     <span class="stat">수집 <b>{{totalCrawled}}</b></span>
     <span class="stat">지원한 공고 제외 <b>{{excludedCount}}</b></span>
@@ -344,11 +348,12 @@ public static class ReportGenerator
     {
         var searchBlob = string.Join(' ', new[]
         {
-            job.Title, job.Company, job.Location, job.GameType, job.Duty, job.Career,
+            job.Title, job.Company, job.Location, job.GameType, job.Duty, job.Career, job.SourceName,
         }.Where(s => !string.IsNullOrWhiteSpace(s))).ToLowerInvariant();
 
         sb.Append("  <li class=\"job\"");
-        sb.Append($" data-id=\"{Attr(job.Id)}\"");
+        // 사이트가 다르면 공고 번호가 겹칠 수 있다. 저장 키는 반드시 "사이트:번호" 를 쓴다.
+        sb.Append($" data-id=\"{Attr(job.Key)}\"");
         sb.Append($" data-title=\"{Attr(job.Title)}\"");
         sb.Append($" data-company=\"{Attr(job.Company)}\"");
         sb.Append($" data-url=\"{Attr(job.Url)}\"");
@@ -370,6 +375,7 @@ public static class ReportGenerator
         sb.AppendLine("</div>");
 
         sb.AppendLine("""      <div class="tags">""");
+        sb.AppendLine($"""        <span class="tag src">{Html(job.SourceName)}</span>""");
         if (!string.IsNullOrWhiteSpace(job.Duty))
             sb.AppendLine($"""        <span class="tag duty">{Html(job.Duty)}</span>""");
         foreach (var tag in job.Tags)

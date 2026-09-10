@@ -13,34 +13,36 @@ namespace JobCrawler.Crawling;
 /// 검색 조건을 매 요청 본문에 실어 보내는 방식이라 이 엔드포인트를 그대로 쓴다.
 /// (같은 경로에 GET 으로 Page 만 붙이면 직무 필터가 풀린 전체 목록이 돌아온다.)
 /// </summary>
-public sealed class GameJobCrawler : IDisposable
+public sealed class GameJobCrawler : IJobSource, IDisposable
 {
     private const string BaseUrl = "https://www.gamejob.co.kr";
-    private const string UserAgent =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+    public string SourceId => "gamejob";
+    public string SourceName => "게임잡";
 
     private static readonly Regex GiNoPattern = new(@"GI_No=(\d+)", RegexOptions.Compiled);
     private static readonly Regex GaArgPattern =
         new(@"IsNullOrWhiteSpace\('([^']*)'\)", RegexOptions.Compiled);
 
+    private readonly GameJobSettings _settings;
     private readonly int _delayMs;
     private readonly int _maxPages;
     private readonly int _pageSize;
     private HttpClient? _client;
     private HttpClientHandler? _handler;
 
-    public GameJobCrawler(int maxPages, int requestDelayMs, int pageSize)
+    public GameJobCrawler(GameJobSettings settings, int requestDelayMs)
     {
-        _maxPages = Math.Max(1, maxPages);
+        _settings = settings;
+        _maxPages = Math.Max(1, settings.MaxPages);
         _delayMs = Math.Max(0, requestDelayMs);
-        _pageSize = Math.Clamp(pageSize, 20, 100);
+        _pageSize = Math.Clamp(settings.PageSize, 20, 100);
     }
 
-    /// <summary>지정한 직무 코드들의 공고를 공고번호 기준으로 중복 제거해 돌려준다.</summary>
-    public async Task<List<JobPosting>> CrawlAsync(IEnumerable<int> dutyCodes, CancellationToken ct = default)
+    /// <summary>설정한 직무 코드들의 공고를 공고번호 기준으로 중복 제거해 돌려준다.</summary>
+    public async Task<List<JobPosting>> CrawlAsync(CancellationToken ct = default)
     {
-        var codes = dutyCodes.Distinct().ToList();
+        var codes = _settings.DutyCodes.Distinct().ToList();
         if (codes.Count == 0) return new List<JobPosting>();
 
         ResetSession();
@@ -107,7 +109,7 @@ public sealed class GameJobCrawler : IDisposable
     {
         added = 0;
         foreach (var job in source)
-            if (target.TryAdd(job.Id, job)) added++;
+            if (target.TryAdd(job.Key, job)) added++;
     }
 
     /// <summary>
@@ -167,6 +169,8 @@ public sealed class GameJobCrawler : IDisposable
 
             var job = new JobPosting
             {
+                SourceId = "gamejob",
+                SourceName = "게임잡",
                 Id = id,
                 Title = Text(titleNode),
                 Url = Absolute(href),
@@ -244,19 +248,7 @@ public sealed class GameJobCrawler : IDisposable
     {
         _client?.Dispose();
         _handler?.Dispose();
-
-        _handler = new HttpClientHandler
-        {
-            CookieContainer = new CookieContainer(),
-            UseCookies = true,
-            AllowAutoRedirect = true,
-            AutomaticDecompression = DecompressionMethods.All,
-        };
-        _client = new HttpClient(_handler) { Timeout = TimeSpan.FromSeconds(30) };
-        _client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
-        _client.DefaultRequestHeaders.TryAddWithoutValidation(
-            "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-        _client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "ko-KR,ko;q=0.9");
+        _client = CrawlerHttp.Create(out _handler);
     }
 
     private async Task<string> GetStringAsync(string url, string referer, CancellationToken ct)

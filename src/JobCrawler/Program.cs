@@ -56,28 +56,55 @@ catch (OperationCanceledException)
 async Task<int> CrawlAsync()
 {
     var today = DateOnly.FromDateTime(DateTime.Now);
-    Console.WriteLine($"게임잡 크롤링 시작 · {today:yyyy-MM-dd}");
-    Console.WriteLine($"대상 직무코드: {string.Join(", ", config.DutyCodes)}");
+    Console.WriteLine($"크롤링 시작 · {today:yyyy-MM-dd}");
 
-    List<JobPosting> crawled;
-    using (var crawler = new GameJobCrawler(config.MaxPages, config.RequestDelayMs, config.PageSize))
+    var collected = new Dictionary<string, JobPosting>();
+    var perSource = new List<string>();
+
+    foreach (var (source, settings) in BuildSources())
     {
-        crawled = await crawler.CrawlAsync(config.DutyCodes, cts.Token);
+        Console.WriteLine($"[{source.SourceName}]");
+
+        List<JobPosting> found;
+        try
+        {
+            using (source as IDisposable)
+                found = await source.CrawlAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 한 사이트가 막히거나 구조가 바뀌어도 나머지 사이트 결과는 살린다.
+            Console.Error.WriteLine($"  {source.SourceName} 크롤링 실패: {ex.Message}");
+            perSource.Add($"{source.SourceName} 실패");
+            continue;
+        }
+
+        var kept = found.Where(j => settings.Matches(j.Title, j.Duty)).ToList();
+        if (kept.Count != found.Count)
+            Console.WriteLine($"  키워드 조건으로 {found.Count - kept.Count}건 제외");
+
+        foreach (var job in kept)
+            collected.TryAdd(job.Key, job);
+
+        Console.WriteLine($"  {kept.Count}건");
+        perSource.Add($"{source.SourceName} {kept.Count}건");
     }
 
-    Console.WriteLine($"중복 제거 후 {crawled.Count}건");
-
-    var matched = crawled.Where(Matches).ToList();
-    if (matched.Count != crawled.Count)
-        Console.WriteLine($"키워드 조건으로 {crawled.Count - matched.Count}건 제외 → {matched.Count}건");
+    var matched = collected.Values.ToList();
+    Console.WriteLine($"합계 {matched.Count}건 ({string.Join(", ", perSource)})");
 
     // 최초 발견일을 기록해 NEW 배지 판정에 쓴다. (지원 여부와는 무관)
     store.RecordSeen(matched, today);
 
     var appliedIds = store.LoadAppliedIds();
     var visible = matched
-        .Where(j => !appliedIds.Contains(j.Id))
+        .Where(j => !appliedIds.Contains(j.Key))
         .OrderByDescending(j => j.FirstSeen == today)
+        .ThenBy(j => j.SourceName, StringComparer.CurrentCulture)
         .ThenBy(j => j.Company, StringComparer.CurrentCulture)
         .ThenBy(j => j.Title, StringComparer.CurrentCulture)
         .ToList();
@@ -93,6 +120,27 @@ async Task<int> CrawlAsync()
 
     // 메일 실패로 리포트 생성까지 실패로 취급하지는 않는다.
     return 0;
+}
+
+/// <summary>config.json 에서 켜 둔 사이트의 크롤러를 만든다.</summary>
+List<(IJobSource Source, SourceSettings Settings)> BuildSources()
+{
+    var sources = new List<(IJobSource, SourceSettings)>();
+    var s = config.Sources;
+
+    if (s.GameJob.Enabled)
+        sources.Add((new GameJobCrawler(s.GameJob, config.RequestDelayMs), s.GameJob));
+
+    if (s.Saramin.Enabled)
+        sources.Add((new SaraminCrawler(s.Saramin, config.RequestDelayMs), s.Saramin));
+
+    if (s.JobKorea.Enabled)
+        sources.Add((new JobKoreaCrawler(s.JobKorea, config.RequestDelayMs), s.JobKorea));
+
+    if (sources.Count == 0)
+        Console.Error.WriteLine("켜져 있는 사이트가 없습니다. config.json 의 Sources 에서 Enabled 를 확인하세요.");
+
+    return sources;
 }
 
 async Task SendReportMailAsync(
@@ -120,6 +168,8 @@ async Task<int> TestEmailAsync()
     {
         new()
         {
+            SourceId = "gamejob",
+            SourceName = "게임잡",
             Id = "0",
             Title = "메일 설정 확인용 예시 공고",
             Company = "JobCrawler",
@@ -190,26 +240,6 @@ int ListApplied()
 }
 
 // ---------------------------------------------------------------- 보조
-
-/// <summary>IncludeKeywords / ExcludeKeywords 조건을 적용한다.</summary>
-bool Matches(JobPosting job)
-{
-    var haystack = $"{job.Title} {job.Duty}";
-
-    foreach (var word in config.ExcludeKeywords)
-        if (!string.IsNullOrWhiteSpace(word) &&
-            haystack.Contains(word, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-    if (config.IncludeKeywords.Count == 0) return true;
-
-    foreach (var word in config.IncludeKeywords)
-        if (!string.IsNullOrWhiteSpace(word) &&
-            haystack.Contains(word, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-    return false;
-}
 
 string ParseTime()
 {
@@ -304,7 +334,7 @@ static int Help()
           uninstall-service   서비스를 해제한다. (관리자 권한 필요)
           service-status      서비스 상태를 본다.
 
-        설정 파일: config.json  (직무코드, 키워드 필터, 포트, 실행 시각, 메일)
+        설정 파일: config.json  (사이트별 검색 조건, 포트, 실행 시각, 메일)
         상태 파일: dailyreport/oldjoblist.json  (지원한 공고 - 다음 리포트에서 제외됨)
                    dailyreport/seenjobs.json    (최초 발견일 - NEW 배지 판정용)
         """);

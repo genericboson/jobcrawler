@@ -15,8 +15,8 @@ public static class EmailReportBuilder
 {
     public static string Subject(DateOnly date, int total, int newCount) =>
         newCount > 0
-            ? $"[게임잡] {date:yyyy-MM-dd} 서버 프로그래머 공고 {total}건 (신규 {newCount}건)"
-            : $"[게임잡] {date:yyyy-MM-dd} 서버 프로그래머 공고 {total}건";
+            ? $"[채용공고] {date:yyyy-MM-dd} 서버 프로그래머 {total}건 (신규 {newCount}건)"
+            : $"[채용공고] {date:yyyy-MM-dd} 서버 프로그래머 {total}건";
 
     public static string BuildHtml(
         DateOnly date,
@@ -33,8 +33,8 @@ public static class EmailReportBuilder
             <div style="margin:0;padding:24px 12px;background:#f6f7f9;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;color:#16181d;">
             <div style="max-width:680px;margin:0 auto;">
 
-              <h1 style="margin:0 0 4px;font-size:20px;">게임잡 · 서버 프로그래머 공고</h1>
-              <div style="color:#6b7280;font-size:13px;">{date:yyyy년 M월 d일} 리포트</div>
+              <h1 style="margin:0 0 4px;font-size:20px;">서버 프로그래머 공고</h1>
+              <div style="color:#6b7280;font-size:13px;">{date:yyyy년 M월 d일} 리포트 · {SourceSummary(jobs)}</div>
 
               <div style="margin:14px 0 18px;font-size:13px;color:#374151;">
                 수집 <b>{totalCrawled}</b>건 ·
@@ -84,7 +84,7 @@ public static class EmailReportBuilder
             ? """<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#e3f5ec;color:#0f9960;font-size:11px;font-weight:bold;">NEW</span>"""
             : "";
 
-        var tags = new List<string>();
+        var tags = new List<string> { job.SourceName };
         if (!string.IsNullOrWhiteSpace(job.Duty)) tags.Add(job.Duty);
         tags.AddRange(job.Tags);
         if (!string.IsNullOrWhiteSpace(job.Deadline)) tags.Add("마감 " + job.Deadline);
@@ -99,6 +99,19 @@ public static class EmailReportBuilder
               </div>
 
             """);
+    }
+
+    /// <summary>"게임잡 70 · 사람인 38 · 잡코리아 90" 처럼 사이트별 건수를 한 줄로 만든다.</summary>
+    public static string SourceSummary(IReadOnlyList<JobPosting> jobs)
+    {
+        if (jobs.Count == 0) return "";
+
+        var parts = jobs
+            .GroupBy(j => j.SourceName)
+            .OrderByDescending(g => g.Count())
+            .Select(g => $"{g.Key} {g.Count()}");
+
+        return string.Join(" · ", parts);
     }
 
     private static string Html(string s) => WebUtility.HtmlEncode(s ?? "");

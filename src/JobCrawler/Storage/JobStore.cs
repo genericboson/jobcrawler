@@ -53,16 +53,30 @@ public sealed class JobStore
 
     // ---------- oldjoblist ----------
 
-    public List<AppliedJob> LoadApplied() => WithLock(() => ReadList<AppliedJob>(_oldJobListPath));
+    public List<AppliedJob> LoadApplied() => WithLock(() =>
+    {
+        var list = ReadList<AppliedJob>(_oldJobListPath);
+        foreach (var job in list) job.Id = Normalize(job.Id);
+        return list;
+    });
 
+    /// <summary>지원 이력에 있는 공고 키 모음.</summary>
     public HashSet<string> LoadAppliedIds() =>
         LoadApplied().Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 예전에는 게임잡만 다뤄서 공고 번호만 저장했다. 지금은 "사이트:번호" 로 적는다.
+    /// 접두사 없는 옛 기록은 게임잡 것으로 보고 올려준다.
+    /// </summary>
+    private static string Normalize(string id) =>
+        id.Contains(':') ? id : JobPosting.MakeKey("gamejob", id);
 
     /// <summary>지원한 공고로 등재한다. 이미 있으면 그대로 둔다. 새로 등재됐으면 true.</summary>
     public bool MarkApplied(AppliedJob job) => WithLock(() =>
     {
         var list = ReadList<AppliedJob>(_oldJobListPath);
-        if (list.Any(a => a.Id == job.Id)) return false;
+        job.Id = Normalize(job.Id);
+        if (list.Any(a => Normalize(a.Id) == job.Id)) return false;
 
         if (job.AppliedAt == default) job.AppliedAt = DateTimeOffset.Now;
         list.Add(job);
@@ -74,7 +88,8 @@ public sealed class JobStore
     public bool UnmarkApplied(string id) => WithLock(() =>
     {
         var list = ReadList<AppliedJob>(_oldJobListPath);
-        var removed = list.RemoveAll(a => a.Id == id);
+        var key = Normalize(id);
+        var removed = list.RemoveAll(a => Normalize(a.Id) == key);
         if (removed == 0) return false;
 
         WriteList(_oldJobListPath, list);
@@ -93,13 +108,23 @@ public sealed class JobStore
 
         foreach (var job in jobs)
         {
-            if (seen.TryGetValue(job.Id, out var first))
+            // 접두사 없이 저장된 옛 게임잡 기록도 같은 공고로 알아본다.
+            var legacy = job.SourceId == "gamejob" ? job.Id : null;
+
+            if (seen.TryGetValue(job.Key, out var first))
             {
                 job.FirstSeen = first;
             }
+            else if (legacy is not null && seen.TryGetValue(legacy, out var legacyFirst))
+            {
+                job.FirstSeen = legacyFirst;
+                seen[job.Key] = legacyFirst;
+                seen.Remove(legacy);
+                changed = true;
+            }
             else
             {
-                seen[job.Id] = today;
+                seen[job.Key] = today;
                 job.FirstSeen = today;
                 changed = true;
             }

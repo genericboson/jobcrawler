@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace JobCrawler;
@@ -6,30 +7,13 @@ namespace JobCrawler;
 /// <summary>config.json 으로 조정 가능한 설정값.</summary>
 public sealed class AppConfig
 {
-    /// <summary>
-    /// 크롤링할 게임잡 직무(duty) 코드. 16 = 기술지원 &gt; 서버.
-    /// 참고: 1=게임개발(클라이언트), 2=게임개발(모바일), 17=네트워크, 18=엔진, 19=시스템·DB, 21=클라우드
-    /// </summary>
-    public List<int> DutyCodes { get; set; } = new() { 16 };
+    /// <summary>사이트별 크롤링 설정.</summary>
+    public SourcesSettings Sources { get; set; } = new();
 
-    /// <summary>
-    /// 제목/직무에 이 단어 중 하나라도 있어야 리포트에 포함. 비워두면 직무 코드 결과를 전부 포함.
-    /// </summary>
-    public List<string> IncludeKeywords { get; set; } = new();
-
-    /// <summary>제목에 이 단어가 있으면 제외.</summary>
-    public List<string> ExcludeKeywords { get; set; } = new();
-
-    /// <summary>읽어올 최대 페이지 수(안전장치).</summary>
-    public int MaxPages { get; set; } = 20;
-
-    /// <summary>한 페이지에 받아올 공고 수. 게임잡이 받아들이는 범위는 20~100.</summary>
-    public int PageSize { get; set; } = 100;
-
-    /// <summary>페이지 요청 사이 대기 시간(ms). 서버 부하를 주지 않기 위한 값.</summary>
+    /// <summary>페이지 요청 사이 대기 시간(ms). 사이트에 부하를 주지 않기 위한 값.</summary>
     public int RequestDelayMs { get; set; } = 800;
 
-    /// <summary>리포트 열람 서버(serve 명령)가 사용할 로컬 포트.</summary>
+    /// <summary>리포트 열람 서버가 사용할 로컬 포트.</summary>
     public int ServerPort { get; set; } = 8777;
 
     /// <summary>자동 실행 시각(install-schedule 이 등록하는 시각). HH:mm</summary>
@@ -56,7 +40,48 @@ public sealed class AppConfig
         }
 
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<AppConfig>(json, JsonOpts) ?? new AppConfig();
+        var migrated = MigrateLegacyShape(json, out var changed);
+
+        var config = JsonSerializer.Deserialize<AppConfig>(migrated, JsonOpts) ?? new AppConfig();
+
+        // 예전 모양이었다면 새 모양으로 다시 써 둔다.
+        if (changed)
+        {
+            config.Save(path);
+            Console.WriteLine("config.json 을 사이트별 설정(Sources) 구조로 옮겼습니다.");
+        }
+
+        return config;
+    }
+
+    /// <summary>
+    /// 게임잡만 있던 시절의 config.json 은 DutyCodes 등을 최상위에 두었다.
+    /// 그 모양이면 Sources.GameJob 아래로 옮겨 담는다.
+    /// </summary>
+    private static string MigrateLegacyShape(string json, out bool changed)
+    {
+        changed = false;
+
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); }
+        catch (JsonException) { return json; }
+
+        if (root is not JsonObject obj) return json;
+        if (obj.ContainsKey("Sources")) return json;
+        if (!obj.ContainsKey("DutyCodes")) return json;
+
+        var gameJob = new JsonObject { ["Enabled"] = true };
+
+        foreach (var key in new[] { "DutyCodes", "IncludeKeywords", "ExcludeKeywords", "MaxPages", "PageSize" })
+        {
+            if (!obj.TryGetPropertyValue(key, out var value) || value is null) continue;
+            gameJob[key] = value.DeepClone();
+            obj.Remove(key);
+        }
+
+        obj["Sources"] = new JsonObject { ["GameJob"] = gameJob };
+        changed = true;
+        return obj.ToJsonString(JsonOpts);
     }
 
     public void Save(string path)
