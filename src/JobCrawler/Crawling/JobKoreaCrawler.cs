@@ -145,10 +145,31 @@ public sealed class JobKoreaCrawler : IJobSource, IDisposable
             Url = $"{BaseUrl}/Recruit/GI_Read/{id}",
             // 코드 목록 대신 사람이 읽을 수 있게 들어 있는 값을 쓴다.
             Duty = TrimSeparators(Str(item, "jobClassificationOrIndustry")),
+            Tech = ReadTech(item),
             Location = FirstToken(Str(item, "_internal_featureLocationCode")),
             Registered = FormatDate(Str(item, "createdAt"), "등록"),
             Deadline = ReadDeadline(item),
         };
+    }
+
+    /// <summary>
+    /// 잡코리아의 직무 분류에는 언어·프레임워크가 없다(대분류만 온다).
+    /// 대신 검색 색인용 필드에 기술 스택이 들어 있어 그쪽을 모아 키워드 조건에 쓴다.
+    /// 공고마다 채워져 있기도 하고 비어 있기도 하다.
+    /// </summary>
+    private static string ReadTech(JsonElement item)
+    {
+        var parts = new List<string>();
+
+        foreach (var field in new[] { "_internal_featureToolCode", "_internal_featureSkillCode" })
+        {
+            var value = Str(item, field);
+            if (value.Length == 0) continue;
+
+            parts.AddRange(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
+        return string.Join(", ", parts.Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static string ReadDeadline(JsonElement item)

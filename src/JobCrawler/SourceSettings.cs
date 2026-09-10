@@ -1,3 +1,5 @@
+using JobCrawler.Models;
+
 namespace JobCrawler;
 
 /// <summary>사이트별 공통 설정.</summary>
@@ -18,10 +20,12 @@ public abstract class SourceSettings
     /// <summary>읽어올 최대 페이지 수(안전장치).</summary>
     public int MaxPages { get; set; } = 20;
 
-    /// <summary>제목과 직무를 합쳐 키워드 조건을 적용한다.</summary>
-    public bool Matches(string title, string duty)
+    /// <summary>제목·직무·기술 스택을 합쳐 키워드 조건을 적용한다.</summary>
+    public bool Matches(JobPosting job) => Matches(job.Title, job.Duty, job.Tech);
+
+    public bool Matches(string title, string duty, string tech = "")
     {
-        var haystack = $"{title} {duty}";
+        var haystack = $"{title} {duty} {tech}";
 
         foreach (var word in ExcludeKeywords)
             if (!string.IsNullOrWhiteSpace(word) &&

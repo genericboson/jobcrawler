@@ -83,7 +83,7 @@ async Task<int> CrawlAsync()
             continue;
         }
 
-        var kept = found.Where(j => settings.Matches(j.Title, j.Duty)).ToList();
+        var kept = found.Where(settings.Matches).ToList();
         if (kept.Count != found.Count)
             Console.WriteLine($"  키워드 조건으로 {found.Count - kept.Count}건 제외");
 

@@ -30,6 +30,14 @@ public sealed class JobPosting
     /// <summary>공고에 붙은 직무 태그(예: "게임개발(모바일), 서버").</summary>
     public string Duty { get; set; } = "";
 
+    /// <summary>
+    /// 공고에 붙은 기술 스택(예: "C++, C언어, MariaDB").
+    /// 사람인은 직무 태그에 기술이 섞여 오지만 잡코리아는 대분류만 오므로,
+    /// 잡코리아 쪽은 검색 색인이 들고 있는 기술 정보를 여기에 담는다.
+    /// 키워드 조건은 제목·직무와 함께 이 값도 본다.
+    /// </summary>
+    public string Tech { get; set; } = "";
+
     public string Career { get; set; } = "";
     public string Education { get; set; } = "";
     public string Location { get; set; } = "";
