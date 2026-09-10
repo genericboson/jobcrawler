@@ -6,7 +6,9 @@
 ```
 jobcrawler/
 ├── config.json              설정 (사이트별 검색 조건, 포트, 실행 시각, 메일)
-├── app/                     dotnet publish 산출물 (스케줄러가 실행하는 exe)
+├── app/                     dotnet publish 산출물 (스케줄러·서비스가 실행하는 exe)
+├── scripts/
+│   └── Update-App.ps1       서비스를 내리고 app 을 다시 게시한 뒤 올린다
 ├── secrets/
 │   └── smtp-password.txt    SMTP 비밀번호 (직접 만든다. 저장소에 올라가지 않음)
 ├── dailyreport/
@@ -88,6 +90,18 @@ JobCrawler.exe uninstall-service
 
 `uninstall-service` 도 관리자 권한이 필요하다.
 `config.json` 의 `ServerPort` 를 바꿨다면 서비스를 지웠다가 다시 등록해야 한다.
+
+### 코드를 고친 뒤 app 갱신하기
+
+서비스가 돌고 있으면 `app\JobCrawler.dll` 을 붙잡고 있어 `dotnet publish` 가 실패한다.
+서비스를 내리고, 게시하고, 다시 올리는 일을 스크립트로 묶어 두었다.
+**관리자 권한 PowerShell** 에서 실행한다.
+
+```powershell
+D:\projects\jobcrawler\scripts\Update-App.ps1
+```
+
+게시가 실패해도 서비스는 도로 올려 둔다. 체크박스 저장이 멈추면 안 되기 때문이다.
 
 ## 리포트 메일로 받기
 
