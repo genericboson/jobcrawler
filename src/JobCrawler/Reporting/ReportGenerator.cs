@@ -105,6 +105,25 @@ public static class ReportGenerator
     background: color-mix(in srgb, var(--warn) 15%, transparent);
     padding: 1px 5px; border-radius: 4px; font-size: 12px;
   }
+  .group { margin: 0 0 16px; }
+  .group.hidden { display: none; }
+  .group summary {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    padding: 11px 14px; list-style: none; user-select: none;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  }
+  /* 기본 삼각형을 지우고 직접 그린다. 사파리는 별도 의사요소를 쓴다. */
+  .group summary::-webkit-details-marker { display: none; }
+  .group summary::before {
+    content: "▸"; color: var(--muted); font-size: 12px;
+    display: inline-block; transition: transform .15s ease;
+  }
+  .group details[open] > summary::before { transform: rotate(90deg); }
+  .group summary:hover { border-color: var(--accent); }
+  .group details[open] > summary { margin-bottom: 10px; }
+  .gname { font-weight: 700; font-size: 15px; }
+  .gcount { color: var(--muted); font-size: 13px; }
+  .gcount b { color: var(--text); font-size: 14px; }
   ul.jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   li.job {
     display: grid; grid-template-columns: auto 1fr; gap: 12px;
@@ -178,10 +197,14 @@ public static class ReportGenerator
         }
         else
         {
-            sb.AppendLine("""<ul class="jobs">""");
-            foreach (var job in jobs)
-                AppendJob(sb, job, date);
-            sb.AppendLine("</ul>");
+            // 사이트별로 묶어 각각 접었다 펼 수 있게 한다.
+            // 묶음 순서는 사이트 이름 순으로 고정해 날마다 자리가 바뀌지 않게 한다.
+            var groups = jobs
+                .GroupBy(j => j.SourceName)
+                .OrderBy(g => g.Key, StringComparer.CurrentCulture);
+
+            foreach (var group in groups)
+                AppendGroup(sb, group.Key, group.ToList(), date);
         }
 
         sb.Append($$"""
@@ -296,17 +319,36 @@ public static class ReportGenerator
   function applyFilter() {
     var q = filterEl.value.trim().toLowerCase();
     var hide = hideEl.checked;
-    var visible = 0;
+    var total = 0;
 
-    document.querySelectorAll("li.job").forEach(function (li) {
-      var matches = !q || li.dataset.search.indexOf(q) !== -1;
-      var isApplied = li.classList.contains("applied");
-      var show = matches && !(hide && isApplied);
-      li.classList.toggle("hidden", !show);
-      if (show) visible++;
+    document.querySelectorAll("section.group").forEach(function (group) {
+      var shown = 0;
+
+      group.querySelectorAll("li.job").forEach(function (li) {
+        var matches = !q || li.dataset.search.indexOf(q) !== -1;
+        var isApplied = li.classList.contains("applied");
+        var show = matches && !(hide && isApplied);
+        li.classList.toggle("hidden", !show);
+        if (show) shown++;
+      });
+
+      var counter = group.querySelector(".gvisible");
+      if (counter) counter.textContent = shown;
+
+      // 남는 것이 없는 사이트는 묶음째 감춘다.
+      group.classList.toggle("hidden", shown === 0);
+
+      // 접어 둔 사이트 안에 검색 결과가 있으면 펼쳐 준다.
+      // 그러지 않으면 분명히 맞는 공고가 있는데 화면에는 아무것도 안 보인다.
+      if (q && shown > 0) {
+        var details = group.querySelector("details");
+        if (details) details.open = true;
+      }
+
+      total += shown;
     });
 
-    countEl.textContent = visible;
+    countEl.textContent = total;
   }
 
   filterEl.addEventListener("input", applyFilter);
@@ -342,6 +384,30 @@ public static class ReportGenerator
 """);
 
         return sb.ToString();
+    }
+
+    /// <summary>사이트 하나를 접었다 펼 수 있는 묶음으로 그린다.</summary>
+    private static void AppendGroup(
+        StringBuilder sb, string sourceName, List<JobPosting> jobs, DateOnly today)
+    {
+        var newCount = jobs.Count(j => j.FirstSeen == today);
+
+        sb.AppendLine($"""<section class="group" data-source="{Attr(sourceName)}">""");
+        sb.AppendLine("""  <details open>""");
+        sb.Append("    <summary>");
+        sb.Append($"""<span class="gname">{Html(sourceName)}</span>""");
+        sb.Append($"""<span class="gcount"><b class="gvisible">{jobs.Count}</b> / {jobs.Count}</span>""");
+        if (newCount > 0)
+            sb.Append($"""<span class="badge">NEW {newCount}</span>""");
+        sb.AppendLine("</summary>");
+
+        sb.AppendLine("""    <ul class="jobs">""");
+        foreach (var job in jobs)
+            AppendJob(sb, job, today);
+        sb.AppendLine("    </ul>");
+
+        sb.AppendLine("  </details>");
+        sb.AppendLine("</section>");
     }
 
     private static void AppendJob(StringBuilder sb, JobPosting job, DateOnly today)
