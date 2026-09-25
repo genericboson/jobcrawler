@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using JobCrawler;
 
 namespace JobCrawler.Models;
 
@@ -52,6 +53,13 @@ public sealed class JobPosting
 
     /// <summary>이 공고를 처음 발견한 날짜. 리포트의 NEW 배지에 쓴다.</summary>
     public DateOnly? FirstSeen { get; set; }
+
+    /// <summary>적합도 점수(0~100). config.json 의 Fit 규칙으로 매긴다.</summary>
+    public int FitScore { get; set; }
+
+    /// <summary>점수가 그렇게 나온 근거. 리포트에서 펼쳐 볼 수 있게 한다.</summary>
+    [JsonIgnore]
+    public List<FitReason> FitReasons { get; set; } = new();
 
     [JsonIgnore]
     public IEnumerable<string> Tags

@@ -100,17 +100,28 @@ async Task<int> CrawlAsync()
     // 최초 발견일을 기록해 NEW 배지 판정에 쓴다. (지원 여부와는 무관)
     store.RecordSeen(matched, today);
 
+    if (config.Fit.Enabled)
+    {
+        foreach (var job in matched)
+            (job.FitScore, job.FitReasons) = config.Fit.Evaluate(job);
+
+        var highlighted = matched.Count(j => j.FitScore >= config.Fit.HighlightThreshold);
+        Console.WriteLine($"적합도 {config.Fit.HighlightThreshold}% 이상 {highlighted}건");
+    }
+
     var appliedIds = store.LoadAppliedIds();
     var visible = matched
         .Where(j => !appliedIds.Contains(j.Key))
-        .OrderByDescending(j => j.FirstSeen == today)
-        .ThenBy(j => j.SourceName, StringComparer.CurrentCulture)
+        // 사이트 안에서는 맞는 자리부터 보여 준다. 위에서부터 훑으면 되도록.
+        .OrderBy(j => j.SourceName, StringComparer.CurrentCulture)
+        .ThenByDescending(j => j.FitScore)
+        .ThenByDescending(j => j.FirstSeen == today)
         .ThenBy(j => j.Company, StringComparer.CurrentCulture)
         .ThenBy(j => j.Title, StringComparer.CurrentCulture)
         .ToList();
 
     var excluded = matched.Count - visible.Count;
-    var path = ReportGenerator.Write(reportDir, today, visible, matched.Count, excluded, config.ServerPort);
+    var path = ReportGenerator.Write(reportDir, today, visible, matched.Count, excluded, config.ServerPort, config.Fit.HighlightThreshold);
 
     Console.WriteLine($"이미 지원한 공고 {excluded}건 제외 → 리포트 {visible.Count}건");
     Console.WriteLine($"리포트 생성: {path}");

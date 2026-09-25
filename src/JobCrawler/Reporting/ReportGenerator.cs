@@ -20,11 +20,15 @@ public static class ReportGenerator
         IReadOnlyList<JobPosting> jobs,
         int totalCrawled,
         int excludedCount,
-        int serverPort)
+        int serverPort,
+        int highlightThreshold = 60)
     {
         Directory.CreateDirectory(reportDirectory);
         var path = Path.Combine(reportDirectory, $"{date:yyyy-MM-dd}.html");
-        File.WriteAllText(path, BuildHtml(date, jobs, totalCrawled, excludedCount, serverPort), new UTF8Encoding(false));
+        File.WriteAllText(
+            path,
+            BuildHtml(date, jobs, totalCrawled, excludedCount, serverPort, highlightThreshold),
+            new UTF8Encoding(false));
         return path;
     }
 
@@ -33,7 +37,8 @@ public static class ReportGenerator
         IReadOnlyList<JobPosting> jobs,
         int totalCrawled,
         int excludedCount,
-        int serverPort)
+        int serverPort,
+        int highlightThreshold)
     {
         var newCount = jobs.Count(j => j.FirstSeen == date);
         var sourceSummary = Html(EmailReportBuilder.SourceSummary(jobs));
@@ -54,6 +59,7 @@ public static class ReportGenerator
     --warn: #b45309;    --warn-soft: #fef3c7;
     --done: #9aa1ab;
     --src: #7c3aed;     --src-soft: #f0e9fe;
+    --fit: #0f9960;     --fit-ink: #0b5c3b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -63,6 +69,7 @@ public static class ReportGenerator
       --warn: #fbbf24;  --warn-soft: #3a2e10;
       --done: #6b7280;
       --src: #c4b5fd;   --src-soft: #2a2140;
+      --fit: #22c55e;   --fit-ink: #bbf7d0;
     }
   }
   * { box-sizing: border-box; }
@@ -152,6 +159,30 @@ public static class ReportGenerator
     font-size: 12px; color: var(--muted);
     border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
   }
+  /* 적합도 배지. 점수가 높을수록 --fit-mix 가 커져 색이 진해진다. */
+  .fit {
+    font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+    white-space: nowrap; color: var(--fit-ink);
+    background: color-mix(in srgb, var(--fit) var(--fit-mix), transparent);
+  }
+  .fit.strong { color: #fff; }
+  .why { margin-top: 8px; font-size: 12px; }
+  .why summary {
+    cursor: pointer; color: var(--muted); list-style: none; display: inline-flex;
+    align-items: center; gap: 4px; padding: 2px 0;
+  }
+  .why summary::-webkit-details-marker { display: none; }
+  .why summary::before { content: "▸"; font-size: 10px; display: inline-block; }
+  .why[open] > summary::before { transform: rotate(90deg); }
+  .why summary:hover { color: var(--accent); }
+  .why ul { list-style: none; margin: 7px 0 0; padding: 9px 11px; display: grid; gap: 4px;
+            background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  .why li { display: flex; gap: 7px; align-items: baseline; color: var(--muted); }
+  .why li.hit { color: var(--text); }
+  .why .mark { width: 11px; flex: none; }
+  .why li.hit .mark { color: var(--new); }
+  .why .w { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .why .on { color: var(--accent); }
   .tag.duty { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .tag.src { background: var(--src-soft); color: var(--src); border-color: transparent; font-weight: 600; }
   .tag.deadline { background: var(--bg); }
@@ -204,7 +235,7 @@ public static class ReportGenerator
                 .OrderBy(g => g.Key, StringComparer.CurrentCulture);
 
             foreach (var group in groups)
-                AppendGroup(sb, group.Key, group.ToList(), date);
+                AppendGroup(sb, group.Key, group.ToList(), date, highlightThreshold);
         }
 
         sb.Append($$"""
@@ -388,7 +419,7 @@ public static class ReportGenerator
 
     /// <summary>사이트 하나를 접었다 펼 수 있는 묶음으로 그린다.</summary>
     private static void AppendGroup(
-        StringBuilder sb, string sourceName, List<JobPosting> jobs, DateOnly today)
+        StringBuilder sb, string sourceName, List<JobPosting> jobs, DateOnly today, int highlightThreshold)
     {
         var newCount = jobs.Count(j => j.FirstSeen == today);
 
@@ -403,14 +434,14 @@ public static class ReportGenerator
 
         sb.AppendLine("""    <ul class="jobs">""");
         foreach (var job in jobs)
-            AppendJob(sb, job, today);
+            AppendJob(sb, job, today, highlightThreshold);
         sb.AppendLine("    </ul>");
 
         sb.AppendLine("  </details>");
         sb.AppendLine("</section>");
     }
 
-    private static void AppendJob(StringBuilder sb, JobPosting job, DateOnly today)
+    private static void AppendJob(StringBuilder sb, JobPosting job, DateOnly today, int highlightThreshold)
     {
         var searchBlob = string.Join(' ', new[]
         {
@@ -432,6 +463,7 @@ public static class ReportGenerator
         sb.Append("""      <div class="title">""");
         sb.Append($"""<a href="{Attr(job.Url)}" target="_blank" rel="noopener">{Html(job.Title)}</a>""");
         if (job.FirstSeen == today) sb.Append("""<span class="badge">NEW</span>""");
+        AppendFitBadge(sb, job, highlightThreshold);
         sb.AppendLine("</div>");
 
         sb.Append("""      <div class="company">""");
@@ -452,8 +484,55 @@ public static class ReportGenerator
             sb.AppendLine($"""        <span class="tag deadline">{Html(job.Registered)}</span>""");
         sb.AppendLine("      </div>");
 
+        AppendFitReasons(sb, job);
+
         sb.AppendLine("    </div>");
         sb.AppendLine("  </li>");
+    }
+
+    /// <summary>
+    /// 적합도 배지. 점수를 CSS 변수로 넘겨 색 진하기를 점수에 비례시킨다.
+    /// 0% 일 때도 완전히 투명하면 배지가 사라져 보이므로 바닥을 조금 깔아 둔다.
+    /// </summary>
+    private static void AppendFitBadge(StringBuilder sb, JobPosting job, int highlightThreshold)
+    {
+        if (job.FitReasons.Count == 0) return;
+
+        var mix = 10 + (int)Math.Round(job.FitScore * 0.90);
+        var strong = job.FitScore >= highlightThreshold ? " strong" : "";
+
+        sb.Append($"""<span class="fit{strong}" style="--fit-mix:{mix}%" """);
+        sb.Append($"""title="적합도 {job.FitScore}% · 제목·직무·기술 기준">적합 {job.FitScore}%</span>""");
+    }
+
+    /// <summary>점수가 그렇게 나온 근거를 펼쳐 볼 수 있게 붙인다.</summary>
+    private static void AppendFitReasons(StringBuilder sb, JobPosting job)
+    {
+        if (job.FitReasons.Count == 0) return;
+
+        var hits = job.FitReasons.Count(r => r.Matched);
+
+        sb.AppendLine("""      <details class="why">""");
+        sb.AppendLine($"""        <summary>적합도 근거 ({hits}/{job.FitReasons.Count} 항목 해당)</summary>""");
+        sb.AppendLine("        <ul>");
+
+        // 해당된 항목을 위로 올려 왜 이 점수인지 먼저 보이게 한다.
+        foreach (var reason in job.FitReasons.OrderByDescending(r => r.Matched).ThenByDescending(r => r.Weight))
+        {
+            var cls = reason.Matched ? " class=\"hit\"" : "";
+            var mark = reason.Matched ? "✓" : "·";
+            var sign = reason.Weight >= 0 ? "+" : "−";
+            var on = reason.Matched && !string.IsNullOrWhiteSpace(reason.MatchedOn)
+                ? $""" <span class="on">'{Html(reason.MatchedOn!)}'</span>"""
+                : "";
+
+            sb.AppendLine(
+                $"""          <li{cls}><span class="mark">{mark}</span><span>{Html(reason.Label)}{on}</span>""" +
+                $"""<span class="w">{sign}{Math.Abs(reason.Weight)}</span></li>""");
+        }
+
+        sb.AppendLine("        </ul>");
+        sb.AppendLine("      </details>");
     }
 
     private static string Html(string s) => WebUtility.HtmlEncode(s ?? "");

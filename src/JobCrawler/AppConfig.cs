@@ -22,6 +22,9 @@ public sealed class AppConfig
     /// <summary>리포트를 만든 뒤 메일로 보내는 설정.</summary>
     public EmailSettings Email { get; set; } = new();
 
+    /// <summary>공고가 나에게 맞는 자리인지 채점하는 규칙.</summary>
+    public FitSettings Fit { get; set; } = FitSettings.Default();
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

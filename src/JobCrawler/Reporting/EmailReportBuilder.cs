@@ -85,6 +85,7 @@ public static class EmailReportBuilder
             : "";
 
         var tags = new List<string> { job.SourceName };
+        if (job.FitReasons.Count > 0) tags.Insert(0, $"적합 {job.FitScore}%");
         if (!string.IsNullOrWhiteSpace(job.Duty)) tags.Add(job.Duty);
         tags.AddRange(job.Tags);
         if (!string.IsNullOrWhiteSpace(job.Deadline)) tags.Add("마감 " + job.Deadline);
