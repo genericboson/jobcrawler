@@ -25,6 +25,9 @@ public sealed class AppConfig
     /// <summary>공고가 나에게 맞는 자리인지 채점하는 규칙.</summary>
     public FitSettings Fit { get; set; } = FitSettings.Default();
 
+    /// <summary>지원 양식을 열어 첨부와 링크를 채워 두는 설정.</summary>
+    public ApplySettings Apply { get; set; } = new();
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

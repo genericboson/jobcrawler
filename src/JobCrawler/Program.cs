@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using JobCrawler;
+using JobCrawler.Applying;
 using JobCrawler.Crawling;
 using JobCrawler.Hosting;
 using JobCrawler.Mailing;
@@ -35,6 +36,9 @@ try
         "run" => await CrawlAsync() == 0 ? await ServeAsync(openBrowser: true) : 1,
         "list" => ListApplied(),
         "test-email" => await TestEmailAsync(),
+        "apply" => await ApplyAsync(args.Length > 1 ? args[1] : ""),
+        "install-protocol" => UrlProtocol.Install(SchedulableExecutable(root)),
+        "uninstall-protocol" => UrlProtocol.Uninstall(),
         "install-schedule" => WindowsSchedule.InstallDaily(SchedulableExecutable(root), root, ParseTime()),
         "install-service" => WindowsServiceInstaller.Install(SchedulableExecutable(root), config.ServerPort),
         "uninstall-service" => WindowsServiceInstaller.Uninstall(),
@@ -121,7 +125,7 @@ async Task<int> CrawlAsync()
         .ToList();
 
     var excluded = matched.Count - visible.Count;
-    var path = ReportGenerator.Write(reportDir, today, visible, matched.Count, excluded, config.ServerPort, config.Fit.HighlightThreshold);
+    var path = ReportGenerator.Write(reportDir, today, visible, matched.Count, excluded, config.ServerPort, config.Fit.HighlightThreshold, config.Apply.Enabled);
 
     Console.WriteLine($"이미 지원한 공고 {excluded}건 제외 → 리포트 {visible.Count}건");
     Console.WriteLine($"리포트 생성: {path}");
@@ -166,6 +170,28 @@ async Task SendReportMailAsync(
         EmailReportBuilder.BuildHtml(date, jobs, totalCrawled, excluded, config.ServerPort),
         reportPath,
         cts.Token);
+}
+
+/// <summary>공고의 지원 양식을 열어 첨부와 링크를 채워 둔다. 제출은 하지 않는다.</summary>
+async Task<int> ApplyAsync(string argument)
+{
+    var postingUrl = UrlProtocol.ParsePostingUrl(argument);
+    if (postingUrl is null)
+    {
+        Console.Error.WriteLine("열 공고 주소를 알 수 없습니다.");
+        Console.Error.WriteLine("사용법: JobCrawler apply <공고 주소>");
+        Console.Error.WriteLine($"        JobCrawler apply \"{UrlProtocol.Scheme}://apply?url=<주소>\"");
+        return 2;
+    }
+
+    if (!config.Apply.Enabled)
+    {
+        Console.Error.WriteLine("config.json 의 Apply.Enabled 가 false 입니다.");
+        return 1;
+    }
+
+    var applier = new JobApplier(config.Apply, root);
+    return await applier.PrepareAsync(postingUrl, cts.Token);
 }
 
 /// <summary>크롤링 없이 메일 설정만 확인한다.</summary>
@@ -335,6 +361,9 @@ static int Help()
           run                 crawl 후 serve 하고 브라우저를 연다.
           list                oldjoblist.json 에 등재된 지원 공고를 출력한다.
           test-email          크롤링 없이 메일 설정이 맞는지 시험 발송해 본다.
+          apply <주소>        공고의 지원 양식을 열어 첨부와 링크를 채워 둔다. 제출은 하지 않는다.
+          install-protocol    리포트의 '지원 준비' 링크를 이 프로그램이 받도록 등록한다.
+          uninstall-protocol  위 등록을 해제한다.
 
           install-schedule    매일 정해진 시각(config.json 의 ScheduleTime)에 crawl 을 돌리도록 등록한다.
           uninstall-schedule  위 작업을 해제한다.

@@ -10,3 +10,6 @@ app/
 
 # SMTP 비밀번호 등 비밀 값
 secrets/
+
+# 개인 설정 - 메일 주소, 이력서 경로 등이 들어간다. 예시본은 config.example.json
+config.json

@@ -1,0 +1,64 @@
+{
+  "Sources": {
+    "GameJob": {
+      "DutyCodes": [
+        16,
+        17,
+        19,
+        21
+      ],
+      "PageSize": 100,
+      "Enabled": true,
+      "IncludeKeywords": [],
+      "ExcludeKeywords": [],
+      "MaxPages": 20
+    },
+    "Saramin": {
+      "Keywords": [
+        "서버"
+      ],
+      "Enabled": true,
+      "IncludeKeywords": [
+        "C++",
+        "C#"
+      ],
+      "ExcludeKeywords": [],
+      "MaxPages": 20
+    },
+    "JobKorea": {
+      "Keywords": [
+        "서버"
+      ],
+      "Enabled": true,
+      "IncludeKeywords": [
+        "C++",
+        "C#"
+      ],
+      "ExcludeKeywords": [],
+      "MaxPages": 20
+    }
+  },
+  "RequestDelayMs": 800,
+  "ServerPort": 8777,
+  "ScheduleTime": "20:00",
+  "Email": {
+    "Enabled": false,
+    "To": "you@example.com",
+    "From": "you@example.com",
+    "SmtpHost": "smtp.naver.com",
+    "SmtpPort": 465,
+    "UseStartTls": false,
+    "UserName": "your-id",
+    "PasswordEnvVar": "JOBCRAWLER_SMTP_PASSWORD",
+    "PasswordFile": "secrets/smtp-password.txt",
+    "AttachReport": true
+  },
+  "Apply": {
+    "Enabled": false,
+    "ResumeFile": "C:\\path\\to\\your-resume.pdf",
+    "PortfolioFile": "C:\\path\\to\\your-portfolio.pdf",
+    "PortfolioUrl": "https://github.com/your-id/your-project",
+    "BrowserProfileDir": "secrets/browser-profile",
+    "BrowserChannel": "chrome"
+  }
+}

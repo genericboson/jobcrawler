@@ -21,13 +21,14 @@ public static class ReportGenerator
         int totalCrawled,
         int excludedCount,
         int serverPort,
-        int highlightThreshold = 60)
+        int highlightThreshold = 60,
+        bool applyEnabled = false)
     {
         Directory.CreateDirectory(reportDirectory);
         var path = Path.Combine(reportDirectory, $"{date:yyyy-MM-dd}.html");
         File.WriteAllText(
             path,
-            BuildHtml(date, jobs, totalCrawled, excludedCount, serverPort, highlightThreshold),
+            BuildHtml(date, jobs, totalCrawled, excludedCount, serverPort, highlightThreshold, applyEnabled),
             new UTF8Encoding(false));
         return path;
     }
@@ -38,7 +39,8 @@ public static class ReportGenerator
         int totalCrawled,
         int excludedCount,
         int serverPort,
-        int highlightThreshold)
+        int highlightThreshold,
+        bool applyEnabled)
     {
         var newCount = jobs.Count(j => j.FirstSeen == date);
         var sourceSummary = Html(EmailReportBuilder.SourceSummary(jobs));
@@ -183,6 +185,13 @@ public static class ReportGenerator
   .why li.hit .mark { color: var(--new); }
   .why .w { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 11px; }
   .why .on { color: var(--accent); }
+  .apply {
+    margin-left: auto; font-size: 12px; font-weight: 600; white-space: nowrap;
+    text-decoration: none; padding: 3px 10px; border-radius: 6px;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid transparent;
+  }
+  .apply:hover { border-color: var(--accent); }
   .tag.duty { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .tag.src { background: var(--src-soft); color: var(--src); border-color: transparent; font-weight: 600; }
   .tag.deadline { background: var(--bg); }
@@ -235,7 +244,7 @@ public static class ReportGenerator
                 .OrderBy(g => g.Key, StringComparer.CurrentCulture);
 
             foreach (var group in groups)
-                AppendGroup(sb, group.Key, group.ToList(), date, highlightThreshold);
+                AppendGroup(sb, group.Key, group.ToList(), date, highlightThreshold, applyEnabled);
         }
 
         sb.Append($$"""
@@ -419,7 +428,7 @@ public static class ReportGenerator
 
     /// <summary>사이트 하나를 접었다 펼 수 있는 묶음으로 그린다.</summary>
     private static void AppendGroup(
-        StringBuilder sb, string sourceName, List<JobPosting> jobs, DateOnly today, int highlightThreshold)
+        StringBuilder sb, string sourceName, List<JobPosting> jobs, DateOnly today, int highlightThreshold, bool applyEnabled)
     {
         var newCount = jobs.Count(j => j.FirstSeen == today);
 
@@ -434,14 +443,14 @@ public static class ReportGenerator
 
         sb.AppendLine("""    <ul class="jobs">""");
         foreach (var job in jobs)
-            AppendJob(sb, job, today, highlightThreshold);
+            AppendJob(sb, job, today, highlightThreshold, applyEnabled);
         sb.AppendLine("    </ul>");
 
         sb.AppendLine("  </details>");
         sb.AppendLine("</section>");
     }
 
-    private static void AppendJob(StringBuilder sb, JobPosting job, DateOnly today, int highlightThreshold)
+    private static void AppendJob(StringBuilder sb, JobPosting job, DateOnly today, int highlightThreshold, bool applyEnabled)
     {
         var searchBlob = string.Join(' ', new[]
         {
@@ -464,6 +473,15 @@ public static class ReportGenerator
         sb.Append($"""<a href="{Attr(job.Url)}" target="_blank" rel="noopener">{Html(job.Title)}</a>""");
         if (job.FirstSeen == today) sb.Append("""<span class="badge">NEW</span>""");
         AppendFitBadge(sb, job, highlightThreshold);
+
+        if (applyEnabled && !string.IsNullOrWhiteSpace(job.Url))
+        {
+            // 서비스(세션 0)는 화면에 브라우저를 띄울 수 없어 서버로 요청을 보내지 않는다.
+            // jobcrawler:// 링크를 누르면 Windows 가 로그인된 세션에서 프로그램을 띄운다.
+            var link = $"jobcrawler://apply?url={Uri.EscapeDataString(job.Url)}";
+            sb.Append($"""<a class="apply" href="{Attr(link)}" title="브라우저를 띄워 지원 양식을 채워 둡니다. 제출은 직접 하셔야 합니다.">지원 준비</a>""");
+        }
+
         sb.AppendLine("</div>");
 
         sb.Append("""      <div class="company">""");

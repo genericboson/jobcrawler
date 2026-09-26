@@ -5,12 +5,13 @@
 
 ```
 jobcrawler/
-├── config.json              설정 (사이트별 검색 조건, 포트, 실행 시각, 메일)
 ├── app/                     dotnet publish 산출물 (스케줄러·서비스가 실행하는 exe)
 ├── scripts/
 │   └── Update-App.ps1       서비스를 내리고 app 을 다시 게시한 뒤 올린다
-├── secrets/
-│   └── smtp-password.txt    SMTP 비밀번호 (직접 만든다. 저장소에 올라가지 않음)
+├── config.json              개인 설정 (저장소에 올라가지 않음. 예시는 config.example.json)
+├── secrets/                 저장소에 올라가지 않는 것들
+│   ├── smtp-password.txt    SMTP 비밀번호 (직접 만든다)
+│   └── browser-profile/     지원 준비용 브라우저 로그인 상태
 ├── dailyreport/
 │   ├── 2026-08-30.html      날짜별 리포트
 │   ├── oldjoblist.json      이미 지원한 공고 - 다음 리포트에서 제외됨
@@ -299,6 +300,57 @@ dotnet run --project src/JobCrawler -- uninstall-schedule
 규칙은 단순 문자열 포함 검사다. 예를 들어 `신입` 감점 규칙은
 "신입/경력 모집" 처럼 경력도 함께 뽑는 공고까지 깎는다.
 그런 경우가 거슬리면 `Keywords` 를 `"신입만"`, `"신입 전용"` 처럼 좁히면 된다.
+
+## 지원 준비
+
+리포트의 **지원 준비** 를 누르면 브라우저가 떠서 공고의 지원 양식까지 열고,
+이력서를 첨부하고 포트폴리오 링크를 채워 둔다.
+
+**제출은 하지 않는다.** 내용을 확인하고 제출 버튼은 직접 누른다.
+그래서 칸을 잘못 알아봐도 '덜 채워짐' 에서 끝나고 잘못 제출될 일은 없다.
+
+### 준비
+
+`config.json` 의 `Apply` 를 채운다.
+
+```json
+"Apply": {
+  "Enabled": true,
+  "ResumeFile": "C:\path\to\경력기술서.pdf",
+  "PortfolioFile": "C:\path\to\포트폴리오.pdf",
+  "PortfolioUrl": "https://github.com/your-id/your-project",
+  "BrowserProfileDir": "secrets/browser-profile",
+  "BrowserChannel": "chrome"
+}
+```
+
+리포트 서버는 Windows 서비스(세션 0)로 돌아 화면에 브라우저를 띄울 수 없다.
+그래서 버튼을 `jobcrawler://` 링크로 만들고, 그 링크를 이 프로그램이 받도록 등록한다.
+관리자 권한은 필요 없다.
+
+```bash
+JobCrawler.exe install-protocol
+```
+
+처음 한 번은 브라우저에서 각 사이트에 **직접 로그인**해야 한다.
+로그인 상태는 `secrets/browser-profile` 에 남아 다음부터 그대로 쓰인다.
+
+터미널에서 바로 열어 볼 수도 있다.
+
+```bash
+JobCrawler.exe apply "https://www.saramin.co.kr/zf_user/jobs/relay/view?rec_idx=12345"
+```
+
+### 한계
+
+**절반 남짓만 된다.** 사람인 40건 중 31건, 잡코리아 20건 중 12건 정도가 사이트 내 지원이고,
+나머지는 회사 홈페이지로 넘어간다. 홈페이지 양식은 회사마다 달라 자동으로 채울 수 없다.
+그런 공고는 페이지만 열어 주고 첨부할 파일과 링크를 알려 준다.
+
+첨부란·링크란은 이름·placeholder 에 든 낱말로 알아본다. 못 알아보면 그냥 비워 둔다.
+사이트가 양식을 바꾸면 조용히 못 채우게 되니, 화면을 꼭 확인하고 제출해야 한다.
+
+**자동 지원은 사이트 약관에 어긋날 수 있다.** 이 도구가 제출까지 하지 않는 이유 중 하나다.
 
 ## 동작 메모
 
